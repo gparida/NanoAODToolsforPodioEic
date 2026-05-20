@@ -3,7 +3,7 @@
 Standalone runner: NanoAODTools + PODIO file (EIC/ePIC format).
 
 Sets up the Python path automatically so no CMSSW or installation is needed.
-Requires: uproot, awkward  (pip install uproot awkward)
+Requires: ROOT with PyROOT bindings (available in eic-shell).
 
 Usage
 -----

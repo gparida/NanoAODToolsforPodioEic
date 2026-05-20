@@ -1,57 +1,56 @@
 """
-Data model classes for PODIO events.
+Data model classes for PODIO events (PyROOT backend).
 
-PODIOEvent   — represents one event; entry point for collection access.
+PODIOEvent      — represents one event; entry point for collection access.
 PODIOCollection — iterable collection of physics objects for one event.
-PODIOObject  — single physics object with attribute-style member access.
+PODIOObject     — single physics object with attribute-style member access.
 """
-import awkward as ak
 import math
 
 
 class PODIOEvent:
     """
-    Single-event accessor for a PODIO file.
+    Single-event accessor backed by a ROOT TTree entry.
 
     Access collections via:
         coll = event.get("ReconstructedParticles")
-        n    = event.count("ReconstructedParticles")   # number of objects
+        n    = event.count("ReconstructedParticles")
 
-    NanoAOD-style shorthand also works:
-        n    = event.nReconstructedParticles
+    NanoAOD-style shorthand:
+        n = event.nReconstructedParticles
     """
 
-    def __init__(self, reader, local_idx):
-        self._reader = reader
-        self._idx = local_idx          # index within the loaded entry range
-        self._coll_cache = {}
+    def __init__(self, tree, collections, local_idx):
+        self._tree        = tree
+        self._collections = collections   # {coll_name: [member, ...]}
+        self._idx         = local_idx
+        self._coll_cache  = {}
 
     def get(self, collection_name):
         """Return a PODIOCollection for this event."""
         if collection_name not in self._coll_cache:
-            if not self._reader.has_collection(collection_name):
-                raise KeyError(f"Collection '{collection_name}' not found in file.")
+            if collection_name not in self._collections:
+                raise KeyError("Collection '{}' not found in file.".format(collection_name))
             self._coll_cache[collection_name] = PODIOCollection(
-                self._reader, self._idx, collection_name
+                self._tree, collection_name, self._collections[collection_name]
             )
         return self._coll_cache[collection_name]
 
     def count(self, collection_name):
         return len(self.get(collection_name))
 
-    # NanoAOD-like: event.nReconstructedParticles
     def __getattr__(self, name):
         if name.startswith("_"):
             raise AttributeError(name)
-        if name.startswith("n") and self._reader.has_collection(name[1:]):
+        if name.startswith("n") and name[1:] in self._collections:
             return self.count(name[1:])
         raise AttributeError(
-            f"PODIOEvent has no attribute '{name}'. "
-            f"Use event.get('CollectionName') to access collections."
+            "PODIOEvent has no attribute '{}'. "
+            "Use event.get('CollectionName') to access collections.".format(name)
         )
 
     def __repr__(self):
-        return f"<PODIOEvent idx={self._idx}>"
+        return "<PODIOEvent idx={}>".format(self._idx)
 
 
 class PODIOCollection:
@@ -63,44 +62,45 @@ class PODIOCollection:
             print(particle.energy)
     """
 
-    def __init__(self, reader, local_idx, collection_name):
-        self._reader = reader
-        self._idx = local_idx
-        self._name = collection_name
-        self._members = reader._collections[collection_name]
-        self._len = None
+    def __init__(self, tree, coll_name, members):
+        self._tree    = tree
+        self._name    = coll_name
+        self._members = members   # list of member names
+        self._data    = None      # {member: [float, ...]} — filled on first access
 
-    # ------------------------------------------------------------------
-    # Internal
+    def _load(self):
+        """Read all member arrays for this collection from the currently loaded TTree entry."""
+        if self._data is not None:
+            return
+        self._data = {}
+        for member in self._members:
+            leaf_name = "{}.{}".format(self._name, member)
+            leaf = self._tree.GetLeaf(leaf_name)
+            if leaf is not None:
+                n = leaf.GetLen()
+                self._data[member] = [leaf.GetValue(j) for j in range(n)]
+            else:
+                self._data[member] = []
 
     def _get_member_array(self, member):
-        """Return the per-event array for a member (e.g., 'energy')."""
-        if member not in self._members:
-            # Try underscore→dot substitution: momentum_x → momentum.x
-            dotted = member.replace("_", ".", 1)
-            if dotted in self._members:
-                member = dotted
-            else:
-                available = list(self._members.keys())
-                raise AttributeError(
-                    f"Member '{member}' not found in collection '{self._name}'. "
-                    f"Available: {available}"
-                )
-        arr = self._reader._load(self._members[member])
-        return arr[self._idx]
-
-    # ------------------------------------------------------------------
-    # Public API
+        self._load()
+        if member in self._data:
+            return self._data[member]
+        # Allow underscore→dot substitution: momentum_x → momentum.x
+        dotted = member.replace("_", ".", 1)
+        if dotted in self._data:
+            return self._data[dotted]
+        raise AttributeError(
+            "Member '{}' not found in collection '{}'. Available: {}".format(
+                member, self._name, self._members
+            )
+        )
 
     def __len__(self):
-        if self._len is None:
-            if not self._members:
-                self._len = 0
-            else:
-                first_key = next(iter(self._members.values()))
-                arr = self._reader._load(first_key)
-                self._len = len(arr[self._idx])
-        return self._len
+        self._load()
+        if not self._data:
+            return 0
+        return len(next(iter(self._data.values())))
 
     def __getitem__(self, index):
         n = len(self)
@@ -108,8 +108,7 @@ class PODIOCollection:
             index += n
         if index < 0 or index >= n:
             raise IndexError(
-                f"Index {index} out of range for collection '{self._name}' "
-                f"(size={n} in this event)."
+                "Index {} out of range for '{}' (size={}).".format(index, self._name, n)
             )
         return PODIOObject(self, index)
 
@@ -118,18 +117,18 @@ class PODIOCollection:
             yield self[i]
 
     def array(self, member):
-        """Return the full per-event array for a member as a list."""
-        return list(self._get_member_array(member))
+        """Return the per-event list of values for a member."""
+        return self._get_member_array(member)
 
     def __repr__(self):
-        return f"<PODIOCollection '{self._name}' len={len(self)}>"
+        return "<PODIOCollection '{}' len={}>".format(self._name, len(self))
 
 
 def Collection(event, name):
     """
     Convenience wrapper — mirrors the NanoAOD Collection(event, "Muon") syntax.
 
-    Usage (identical pattern to exampleAnalysis.py):
+    Usage:
         charged = Collection(event, "ReconstructedChargedParticles")
         for p in charged:
             print(p.energy)
@@ -143,49 +142,38 @@ class PODIOObject:
 
     Member access:
         particle.energy          # direct member
-        particle.momentum_x      # dot-separated: momentum.x
+        particle.momentum_x      # underscore → dot: momentum.x
         particle['momentum.x']   # explicit dot notation
-        particle.p4()            # TLorentzVector-like (x,y,z,E)
+        particle.p4()            # (px, py, pz, E) tuple
     """
 
     def __init__(self, collection, index):
-        self._coll = collection
+        self._coll  = collection
         self._index = index
 
     def __getattr__(self, name):
         if name.startswith("_"):
             raise AttributeError(name)
-        arr = self._coll._get_member_array(name)
-        val = arr[self._index]
-        # Convert awkward scalar to Python native type
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return val
+        return self._coll._get_member_array(name)[self._index]
 
     def __getitem__(self, member):
-        arr = self._coll._get_member_array(member)
-        val = arr[self._index]
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return val
+        return self._coll._get_member_array(member)[self._index]
 
     def has(self, member):
-        """Check if member exists in this collection."""
-        members = self._coll._members
-        return member in members or member.replace("_", ".", 1) in members
+        try:
+            self._coll._get_member_array(member)
+            return True
+        except AttributeError:
+            return False
 
     def p4(self):
-        """
-        Return (px, py, pz, energy) as a simple 4-tuple.
-        Works for collections that have momentum.x/y/z and energy members.
-        """
-        px = self["momentum.x"]
-        py = self["momentum.y"]
-        pz = self["momentum.z"]
-        e  = self["energy"]
-        return (px, py, pz, e)
+        """Return (px, py, pz, energy) as a 4-tuple."""
+        return (
+            self["momentum.x"],
+            self["momentum.y"],
+            self["momentum.z"],
+            self["energy"],
+        )
 
     def pt(self):
         px = self["momentum.x"]
@@ -209,6 +197,4 @@ class PODIOObject:
         return math.atan2(self["momentum.y"], self["momentum.x"])
 
     def __repr__(self):
-        return (
-            f"<PODIOObject '{self._coll._name}[{self._index}]'>"
-        )
+        return "<PODIOObject '{}[{}]'>".format(self._coll._name, self._index)

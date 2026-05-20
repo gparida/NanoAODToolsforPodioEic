@@ -1,94 +1,284 @@
-# nanoAOD-tools
-A minimal set of tool for working with NanoAODs (with dependencies on only python + root, not on the CMSSW framework)
+# NanoAODTools for EIC/ePIC PODIO Files
 
-**Please note that, starting with CMSSW_13_3_0 (with backports for the coming 13_0_16 and 13_1_2), the framework part of NanoAODTools is maintained as a CMSSW package, in [PhysicsTools/NanoAODTools](https://github.com/cms-sw/cmssw/tree/master/PhysicsTools/NanoAODTools)**. 
+A standalone Python analysis framework for reading EIC/ePIC reconstruction files in PODIO format,
+built on top of the NanoAODTools infrastructure.
+No CMSSW installation is required — only ROOT with PyROOT bindings.
 
-This repository and the instructions below are still relevant only for older CMSSW releases.
+---
 
-## Checkout instructions: standalone
+## What this is
 
-You need to setup python 2.7 and a recent ROOT version first.
+This repo adapts the NanoAODTools event-loop and module system to work directly on PODIO ROOT files
+produced by the ePIC simulation/reconstruction chain (e.g. `recon_*.root`).
+The API mirrors the NanoAODTools style (`Collection`, `Module`, `PostProcessor`) so that analysis code
+is easy to read and port.
 
-    git clone https://github.com/cms-nanoAOD/nanoAOD-tools.git NanoAODTools
-    cd NanoAODTools
-    bash standalone/env_standalone.sh build
-    source standalone/env_standalone.sh
+Key features:
+- Read any PODIO `events` tree without loading EDM4hep/PODIO C++ dictionaries
+- Per-event collection access with attribute-style member lookup (`p.energy`, `p.momentum_x`)
+- Built-in helpers: `pt()`, `eta()`, `phi()`, `p4()`
+- Rec↔MC truth matching via `RecoMCAssociation`
+- MC parent/daughter navigation via `MCParticleNavigator`
 
-Repeat only the last command at the beginning of every session.
+---
 
-Please never commit neither the build directory, nor the empty init.py files created by the script.
+## Requirements
 
-## Checkout instructions: CMSSW (CMSSW 12X and below)
+| Dependency | Where to get it |
+|---|---|
+| Python 3.6+ | Included in eic-shell |
+| ROOT + PyROOT | Included in eic-shell |
+| matplotlib *(optional)* | `pip install matplotlib` — only needed for plot output |
 
-    cd $CMSSW_BASE/src
-    git clone https://github.com/cms-nanoAOD/nanoAOD-tools.git PhysicsTools/NanoAODTools
-    cd PhysicsTools/NanoAODTools
-    cmsenv
-    scram b
+**eic-shell** (the standard EIC software container) provides everything mandatory.
+No `pip install` is needed for the core framework.
 
-## General instructions to run the post-processing step
+---
 
-The script to run the post-processing step is `scripts/nano_postproc.py`.
+## Setup on a Remote EIC Cluster
 
-The basic syntax of the command is the following:
+These instructions apply to BNL SDCC/RCF, JLab, NERSC, or any cluster that provides
+the EIC software container via Singularity/Apptainer.
 
-    python scripts/nano_postproc.py /path/to/output_directory /path/to/input_tree.root
+### Step 1 — Log in and clone the repository
 
-Here is a summary of its features:
-* the `-s`,`--postfix` option is used to specify the suffix that will be appended to the input file name to obtain the output file name. It defaults to *_Friend* in friend mode, *_Skim* in full mode.
-* the `-c`,`--cut` option is used to pass a string expression (using the same syntax as in TTree::Draw) that will be used to select events. It cannot be used in friend mode.
-* the `-J`,`--json` option is used to pass the name of a JSON file that will be used to select events. It cannot be used in friend mode.
-* if run with the `--full` option (default), the output will be a full nanoAOD file. If run with the `--friend` option, instead, the output will be a friend tree that can be attached to the input tree. In the latter case, it is not possible to apply any kind of event selection, as the number of entries in the parent and friend tree must be the same.
-* the `-b`,`--branch-selection` option is used to pass the name of a file containing directives to keep or drop branches from the output tree. The file should contain one directive among `keep`/`drop` (wildcards allowed as in TTree::SetBranchStatus) or `keepmatch`/`dropmatch` (python regexp matching the branch name) per line, as shown in the [this](python/postprocessing/examples/keep_and_drop.txt) example file.
-  * `--bi` and `--bo` allows to specify the keep/drop file separately for input and output trees.  
-* the `--justcount` option will cause the script to printout the number of selected events, without actually writing the output file.
+```bash
+ssh <your_username>@<cluster_hostname>
 
-Please run with `--help` for a complete list of options.
-
-## How to write and run modules
-
-It is possible to import modules that will be run on each entry passing the event selection, and can be used to calculate new variables that will be included in the output tree (both in friend and full mode) or to apply event filter decisions.
-
-We will use `python/postprocessing/examples/exampleModule.py` as an example. The module definition [file](python/postprocessing/examples/exampleModule.py), containing a simple constructor
-```
-   exampleModuleConstr = lambda : exampleProducer(jetSelection= lambda j : j.pt > 30)
-```
-should be imported using the following syntax:
-
-```
-python scripts/nano_postproc.py outDir /eos/cms/store/user/andrey/f.root -I PhysicsTools.NanoAODTools.postprocessing.examples.exampleModule exampleModuleConstr
+# Clone into your home or work directory — the repo is lightweight (~few MB, no large files)
+git clone https://github.com/gparida/NanoAODToolsforPodioEic.git
+cd NanoAODToolsforPodioEic
 ```
 
-Let us now examine the structure of the `exampleProducer` module class. All modules must inherit from `PhysicsTools.NanoAODTools.postprocessing.framework.eventloop.Module`.
-* the `__init__` constructor function should be used to set the module options.
-* the `beginFile` function should create the branches that you want to add to the output file, calling the `branch(branchname, typecode, lenVar)` method of `wrappedOutputTree`. `typecode` should be the ROOT TBranch type ("F" for float, "I" for int etc.). `lenVar` should be the name of the variable holding the length of array branches (for instance, `branch("Electron_myNewVar","F","nElectron")`). If the `lenVar` branch does not exist already - it can happen if you create a new collection, see an example [here](python/postprocessing/examples/collectionMerger.py)) - it will be automatically created.
-* the `analyze` function is called on each event. It should return `True` if the event is to be retained, `False` if it should be dropped.
+Recommended locations:
+- **Scripts/code** → `$HOME/` or `$HOME/analysis/` (backed up, small quota is fine)
+- **Input recon files** → `/gpfs/...`, `/lustre/...`, or `/work/...` (large storage partition)
+- **Output files** → same large-storage partition as inputs, or a dedicated `output/` directory
 
-### Keep/drop branches
-See the effect of keep/drop instructions by running:
+### Step 2 — Enter the EIC software environment
+
+The EIC software container (eic-shell) provides ROOT, PyROOT, and all physics libraries.
+
+**On BNL SDCC/RCF:**
+```bash
+# Option A: interactive shell
+singularity shell /cvmfs/eic.opensciencegrid.org/singularity/epic-simulation-environment_latest.sif
+
+# Option B: run a single command inside the container
+singularity exec /cvmfs/eic.opensciencegrid.org/singularity/epic-simulation-environment_latest.sif \
+    python scripts/run_podio_example.py --input /path/to/recon.root
 ```
-python scripts/nano_postproc.py outDir /eos/cms/store/user/andrey/f.root -I PhysicsTools.NanoAODTools.postprocessing.examples.exampleModule exampleModuleConstr -s _exaModu_keepdrop --bi scripts/keep_and_drop_input.txt --bo scripts/keep_and_drop_output.txt
+
+**On JLab / NERSC / generic cluster with Apptainer:**
+```bash
+apptainer shell /path/to/eic-shell.sif
+# or use the eic-shell alias if your site has set it up:
+eic-shell
 ```
-comparing to the previous command (without `--bi` and `--bo`).
-The output branch created by _exampleModuleConstr_ produces the same result in both cases. But this one drops all other branches when creating output tree. It also runs faster.
 
-The event interface, defined in `PhysicsTools.NanoAODTools.postprocessing.framework.datamodule`, allows to dynamically construct views of objects organized in collections, based on the branch names, for instance:
+Once inside the container, verify ROOT is available:
+```bash
+python -c "import ROOT; print(ROOT.__version__)"
+```
 
-    electrons = Collection(event, "Electron")
-    if len(electrons)>1: print electrons[0].someVar+electrons[1].someVar
-    electrons_highpt = filter(lambda x: x.pt>50, electrons)
+### Step 3 — Run the example analysis
 
-and this will access the elements of the `Electron_someVar`, `Electron_pt` branch arrays. Event variables can be accessed simply by `event.someVar`, for instance `event.rho`.
+```bash
+# Inside eic-shell, from the repo root directory:
+python scripts/run_podio_example.py --input /path/to/recon.root
 
-The output branches should be filled calling the `fillBranch(branchname, value)` method of `wrappedOutputTree`. `value` should be the desired value for single-value branches, an iterable with the correct length for array branches. It is not necessary to fill the `lenVar` branch explicitly, as this is done automatically using the length of the passed iterable.
+# Limit to first 100 events (useful for a quick test):
+python scripts/run_podio_example.py --input /path/to/recon.root --nevts 100
+
+# Skip the first 500 events:
+python scripts/run_podio_example.py --input /path/to/recon.root --first 500
+
+# List all collections available in the file (no analysis, just inspection):
+python scripts/run_podio_example.py --input /path/to/recon.root --list
+```
+
+Expected output (truncated):
+```
+Input file : /path/to/recon.root
+[PODIOPostProcessor] Opening: /path/to/recon.root
+  990 events selected (firstEntry=0, maxEntries=None)
+  Collections available: 42
+  Processed     100/990 events  (10.1%)  rate=12.3 kHz  accepted=100
+  ...
+Done. Processed 990 events in 0.8s (1.24 kHz). Accepted 990/990.
+
+[EICExampleAnalysis] Results after 990 events:
+  ReconstructedParticles per event : mean=18.42  min=0  max=61
+  Recon |p|  : mean=1.847 GeV
+  ...
+```
+
+### Step 4 — Run as a batch job
+
+Create a submission script (example for Slurm):
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=eic_analysis
+#SBATCH --output=logs/eic_%j.out
+#SBATCH --time=02:00:00
+#SBATCH --mem=4G
+
+singularity exec /cvmfs/eic.opensciencegrid.org/singularity/epic-simulation-environment_latest.sif \
+    python /path/to/NanoAODToolsforPodioEic/scripts/run_podio_example.py \
+        --input /gpfs/mydata/recon_170.root \
+        --nevts 10000
+```
+
+Submit with:
+```bash
+sbatch my_job.sh
+```
+
+---
+
+## Writing Your Own Analysis
+
+### Step 1 — Create a new module file
+
+Create a file, e.g. `python/postprocessing/examples/my_analysis.py`:
+
+```python
+import math
+from PhysicsTools.NanoAODTools.postprocessing.framework.podio_eventloop import PODIOModule
+from PhysicsTools.NanoAODTools.postprocessing.framework.podio_datamodel import Collection
 
 
-### mht producer
-Now, let's have a look at another example, `python/postprocessing/examples/mhtjuProducerCpp.py`, [file](python/postprocessing/examples/mhtjuProducerCpp.py). Similarly, it should be imported using the following syntax:
+class MyAnalysis(PODIOModule):
+
+    def beginJob(self):
+        self.electron_pt = []
+
+    def analyze(self, event):
+        charged = Collection(event, "ReconstructedChargedParticles")
+        for p in charged:
+            if abs(p.energy) > 0.1:                     # basic energy cut
+                self.electron_pt.append(p.pt())
+        return True                                      # keep all events
+
+    def endJob(self):
+        if self.electron_pt:
+            print("Mean pT of charged particles: {:.3f} GeV".format(
+                sum(self.electron_pt) / len(self.electron_pt)
+            ))
+```
+
+### Step 2 — Create a runner script
+
+Create `scripts/run_my_analysis.py`:
+
+```python
+#!/usr/bin/env python3
+import os, sys, types, argparse
+
+# --- path bootstrap (copy this block into every new runner script) ---
+_here         = os.path.dirname(os.path.abspath(__file__))
+_repo_root    = os.path.dirname(_here)
+_python_src   = os.path.join(_repo_root, "python")
+
+def _ns(name, path):
+    if name not in sys.modules:
+        m = types.ModuleType(name); m.__path__ = [path]; sys.modules[name] = m
+_ns("PhysicsTools",              os.path.join(_repo_root, "build", "lib", "python", "PhysicsTools"))
+_ns("PhysicsTools.NanoAODTools", _python_src)
+if _python_src not in sys.path:
+    sys.path.insert(0, _python_src)
+# ---
+
+from PhysicsTools.NanoAODTools.postprocessing.framework.podio_postprocessor import PODIOPostProcessor
+from PhysicsTools.NanoAODTools.postprocessing.examples.my_analysis import MyAnalysis
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", required=True)
+parser.add_argument("--nevts", type=int, default=None)
+args = parser.parse_args()
+
+PODIOPostProcessor(
+    inputFiles=[args.input],
+    modules=[MyAnalysis()],
+    maxEntries=args.nevts,
+).run()
+```
+
+Run it:
+```bash
+python scripts/run_my_analysis.py --input /path/to/recon.root
+```
+
+### Available collections (typical ePIC recon file)
+
+| Collection name | Contents |
+|---|---|
+| `ReconstructedParticles` | All reconstructed particles (charged + neutral) |
+| `ReconstructedChargedParticles` | Charged-only reconstructed tracks |
+| `MCParticles` | Generator-level truth particles |
+| `InclusiveKinematicsElectron` | DIS kinematics via electron method (x, Q2, y) |
+| `ReconstructedChargedParticleAssociations` | Rec↔MC truth links |
+
+Common members per particle:
+- `energy`, `momentum.x`, `momentum.y`, `momentum.z`, `mass`, `charge`
+- `PDG` (MCParticles only), `generatorStatus` (MCParticles only)
+
+Use `--list` to see all collections and their members for a specific file:
+```bash
+python scripts/run_podio_example.py --input recon.root --list
+```
+
+### MC truth matching and parent navigation
+
+```python
+from PhysicsTools.NanoAODTools.postprocessing.framework.podio_associations import (
+    RecoMCAssociation, MCParticleNavigator
+)
+
+def analyze(self, event):
+    charged = Collection(event, "ReconstructedChargedParticles")
+    mc      = Collection(event, "MCParticles")
+
+    # Rec <-> MC matching
+    assoc = RecoMCAssociation(event, "ReconstructedChargedParticleAssociations")
+    for i, rec in enumerate(charged):
+        mc_idx, weight = assoc.best_mc(i)   # (None, 0.0) if unmatched
+        if mc_idx is not None:
+            print("PDG =", int(mc[mc_idx]["PDG"]))
+
+    # MC parent/daughter navigation
+    nav = MCParticleNavigator(event)
+    for i in range(len(mc)):
+        if nav.is_stable(i):
+            for parent in nav.parents(i):
+                print("parent PDG =", int(parent["PDG"]))
+```
+
+---
+
+## Repository layout
 
 ```
-python scripts/nano_postproc.py outDir /eos/cms/store/user/andrey/f.root -I PhysicsTools.NanoAODTools.postprocessing.examples.mhtjuProducerCpp mhtju
+NanoAODToolsforPodioEic/
+├── python/postprocessing/
+│   ├── framework/
+│   │   ├── podio_reader.py          # opens ROOT file, iterates events (PyROOT)
+│   │   ├── podio_datamodel.py       # PODIOEvent / PODIOCollection / PODIOObject
+│   │   ├── podio_eventloop.py       # PODIOModule base class + event loop
+│   │   ├── podio_postprocessor.py   # high-level runner
+│   │   └── podio_associations.py    # RecoMCAssociation + MCParticleNavigator
+│   └── examples/
+│       ├── podio_example_analysis.py  # EICExampleAnalysis (used by run_podio_example.py)
+│       └── podio_exampleAnalysis.py   # extended example with associations + MC navigation
+└── scripts/
+    └── run_podio_example.py         # CLI entry point
 ```
-This module has the same structure of its producer as `exampleProducer`, but in addition it utilizes a C++ code to calculate the mht variable, `src/mhtjuProducerCppWorker.cc`. This code is loaded in the `__init__` method of the producer.
 
+---
 
+## Note on `standalone/env_standalone.sh`
+
+This script is inherited from the original CMS NanoAODTools and is **not needed** for EIC/PODIO
+analysis. It requires Python 2.7 and a CMSSW-style build, neither of which is relevant here.
+The path bootstrap in each runner script (`scripts/run_podio_example.py`) replaces it entirely.

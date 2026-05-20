@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-PODIO equivalent of exampleAnalysis.py — run standalone without CMSSW or ROOT.
+PODIO equivalent of exampleAnalysis.py — run standalone without CMSSW.
 
 Mirrors the structure of postprocessing/examples/exampleAnalysis.py:
   - Module subclass with beginJob / analyze / endJob
   - Collection access per event
-  - Simple histogram (matplotlib instead of ROOT TH1F)
+  - Simple histogram (matplotlib or skipped if unavailable)
   - PostProcessor call at the bottom
 
-Requires: pip install uproot awkward
-Run with: python3 python/postprocessing/examples/podio_exampleAnalysis.py
+Requires: ROOT with PyROOT bindings (available in eic-shell).
+Run with: python3 python/postprocessing/examples/podio_exampleAnalysis.py --input /path/to/recon.root
 """
 import os
 import sys
@@ -154,17 +154,28 @@ class PODIOExampleAnalysis(PODIOModule):
             print("\n(matplotlib not available — skipping histogram plot)")
 
 
-# ---------------------------------------------------------------------------
-# Locate the default PODIO input file (recon_170.root next to NanoAODTools/)
-_default_input = os.path.join(_package_root, "..", "PODIO file", "recon_170.root")
-_default_input = os.path.abspath(_default_input)
+if __name__ == "__main__":
+    import argparse
 
-files = [_default_input]
+    parser = argparse.ArgumentParser(
+        description="PODIO example analysis — run standalone without CMSSW."
+    )
+    parser.add_argument("--input", default=None, help="Path to PODIO ROOT file")
+    parser.add_argument("--nevts", type=int, default=None, help="Max events to process")
+    args = parser.parse_args()
 
-p = PODIOPostProcessor(
-    inputFiles    = files,
-    modules       = [PODIOExampleAnalysis()],
-    maxEntries    = None,   # process all events; set e.g. 100 to limit
-    progressEvery = 100,
-)
-p.run()
+    # Locate input file
+    infile = args.input
+    if infile is None:
+        _default = os.path.join(_package_root, "..", "PODIO file", "recon_170.root")
+        infile = os.path.abspath(_default)
+    if not os.path.isfile(infile):
+        raise SystemExit("ERROR: File not found: {}\nPass --input /path/to/recon.root".format(infile))
+
+    p = PODIOPostProcessor(
+        inputFiles    = [infile],
+        modules       = [PODIOExampleAnalysis()],
+        maxEntries    = args.nevts,
+        progressEvery = 100,
+    )
+    p.run()

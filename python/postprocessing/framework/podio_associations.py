@@ -77,18 +77,15 @@ class RecoMCAssociation:
     """
 
     def __init__(self, event, assoc_name):
-        reader = event._reader
-        idx    = event._idx
-
-        def _load(coll, member):
-            key = reader._collections.get(coll, {}).get(member)
-            if key is None:
+        def _load(coll_name, member):
+            try:
+                return list(event.get(coll_name).array(member))
+            except (KeyError, AttributeError):
                 return []
-            return list(reader._load(key)[idx])
 
         # Relation branch names follow the pattern _<AssocName>_rec / _<AssocName>_sim
-        rec_rel = f"_{assoc_name}_rec"
-        sim_rel = f"_{assoc_name}_sim"
+        rec_rel = "_{}_rec".format(assoc_name)
+        sim_rel = "_{}_sim".format(assoc_name)
 
         weights  = _load(assoc_name, "weight")
         rec_idxs = _load(rec_rel,    "index")
@@ -184,23 +181,19 @@ class MCParticleNavigator:
     """
 
     def __init__(self, event):
-        reader = event._reader
-        idx    = event._idx
-
-        def _load(coll, member):
-            key = reader._collections.get(coll, {}).get(member)
-            if key is None:
+        def _load(coll_name, member):
+            try:
+                return [int(x) for x in event.get(coll_name).array(member)]
+            except (KeyError, AttributeError):
                 return []
-            arr = reader._load(key)[idx]
-            return [int(x) for x in arr]
 
-        self._pb  = _load("MCParticles", "parents_begin")
-        self._pe  = _load("MCParticles", "parents_end")
-        self._db  = _load("MCParticles", "daughters_begin")
-        self._de  = _load("MCParticles", "daughters_end")
-        self._pi  = _load("_MCParticles_parents",   "index")
-        self._di  = _load("_MCParticles_daughters", "index")
-        self._mc  = event.get("MCParticles")
+        self._pb = _load("MCParticles", "parents_begin")
+        self._pe = _load("MCParticles", "parents_end")
+        self._db = _load("MCParticles", "daughters_begin")
+        self._de = _load("MCParticles", "daughters_end")
+        self._pi = _load("_MCParticles_parents",   "index")
+        self._di = _load("_MCParticles_daughters", "index")
+        self._mc = event.get("MCParticles")
 
     # ------------------------------------------------------------------
 

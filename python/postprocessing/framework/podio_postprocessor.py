@@ -2,7 +2,7 @@
 High-level standalone PostProcessor for PODIO files.
 
 Drop-in replacement for PostProcessor when working with EIC/ePIC PODIO
-ROOT files without CMSSW or PyROOT.
+ROOT files. Requires PyROOT (ROOT with Python bindings), available in eic-shell.
 
 Example
 -------
@@ -10,7 +10,7 @@ Example
     from my_module import MyAnalysis
 
     p = PODIOPostProcessor(
-        inputFiles=["recon_170.root"],
+        inputFiles=["recon.root"],
         modules=[MyAnalysis()],
         maxEntries=500,
     )
