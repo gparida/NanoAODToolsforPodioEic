@@ -1,0 +1,14 @@
+# Enforce Unix LF line endings for all text files.
+# This prevents Windows CRLF (^M) from appearing when the repo is
+# checked out on Windows and run on Linux (EIC cluster / eic-shell).
+
+*           text=auto eol=lf
+
+# Explicitly mark binary files so git never touches their bytes
+*.root      binary
+*.so        binary
+*.o         binary
+*.a         binary
+*.pyc       binary
+*.png       binary
+*.pdf       binary

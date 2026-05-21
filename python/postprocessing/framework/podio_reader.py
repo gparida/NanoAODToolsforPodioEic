@@ -5,6 +5,7 @@ Reads EIC/ePIC PODIO ROOT files using PyROOT.
 Requires: ROOT with PyROOT bindings (standard in eic-shell).
 """
 import ROOT
+ROOT.PyConfig.IgnoreCommandLineOptions = True   # must be set before ROOT parses argv
 ROOT.gROOT.SetBatch(True)
 
 
