@@ -129,18 +129,20 @@ class GoodElectronAnalysis(PODIOModule):
             g_ele_data["mass"].append(rec_e["mass"])
 
             # Gen kinematics — always available since mc_idx came from the selection above
-            gen_px = truth["momentum.x"]
-            gen_py = truth["momentum.y"]
-            gen_pz = truth["momentum.z"]
-            gen_p  = math.sqrt(gen_px**2 + gen_py**2 + gen_pz**2)
-            gen_pt = math.sqrt(gen_px**2 + gen_py**2)
-            gen_eta = (0.5 * math.log((gen_p + gen_pz) / (gen_p - gen_pz))
-                       if gen_p > abs(gen_pz) else math.copysign(float("inf"), gen_pz))
+            gen_px   = truth["momentum.x"]
+            gen_py   = truth["momentum.y"]
+            gen_pz   = truth["momentum.z"]
+            gen_mass = truth["mass"]
+            gen_p    = math.sqrt(gen_px**2 + gen_py**2 + gen_pz**2)
+            gen_pt   = math.sqrt(gen_px**2 + gen_py**2)
+            gen_E    = math.sqrt(gen_p**2 + gen_mass**2)
+            gen_eta  = (0.5 * math.log((gen_p + gen_pz) / (gen_p - gen_pz))
+                        if gen_p > abs(gen_pz) else math.copysign(float("inf"), gen_pz))
 
             g_gen_ele_data["pt"].append(gen_pt)
             g_gen_ele_data["eta"].append(gen_eta)
             g_gen_ele_data["phi"].append(math.atan2(gen_py, gen_px))
-            g_gen_ele_data["E"].append(truth["energy"])
+            g_gen_ele_data["E"].append(gen_E)
             g_gen_ele_data["px"].append(gen_px)
             g_gen_ele_data["py"].append(gen_py)
             g_gen_ele_data["pz"].append(gen_pz)
