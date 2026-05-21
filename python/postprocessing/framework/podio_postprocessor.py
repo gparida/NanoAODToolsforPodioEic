@@ -33,6 +33,9 @@ class PODIOPostProcessor:
     maxEntries  : int or None — maximum events to process per file
     firstEntry  : int — skip this many events at the start of each file
     progressEvery : int — print progress every N events (0 to disable)
+    branchsel   : str or None — path to a keep/drop text file (same format as
+                  NanoAODTools BranchSelection).  Forwarded to each module's
+                  beginFile() so it can be passed to PODIOOutputWriter.
     """
 
     def __init__(
@@ -42,12 +45,14 @@ class PODIOPostProcessor:
         maxEntries=None,
         firstEntry=0,
         progressEvery=1000,
+        branchsel=None,
     ):
         self.inputFiles    = inputFiles
         self.modules       = modules or []
         self.maxEntries    = maxEntries
         self.firstEntry    = firstEntry
         self.progressEvery = progressEvery
+        self.branchsel     = branchsel   # keep/drop file path forwarded to beginFile
 
     def run(self):
         t0 = time.time()
@@ -75,7 +80,7 @@ class PODIOPostProcessor:
             print(f"  Collections available: {len(reader.collection_names)}")
 
             for m in self.modules:
-                m.beginFile(fname)
+                m.beginFile(fname, branchsel=self.branchsel)
 
             n_proc, n_acc, elapsed = podio_event_loop(
                 self.modules,

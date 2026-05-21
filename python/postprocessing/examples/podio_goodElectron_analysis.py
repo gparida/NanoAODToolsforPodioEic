@@ -60,14 +60,14 @@ class GoodElectronAnalysis(PODIOModule):
         print(f"  Total good electrons selected: {self.n_good_electrons}")
         print(f"  Gen-matched electrons: {self.n_gen_matched}")
 
-    def beginFile(self, input_file, output_file=None):
+    def beginFile(self, input_file, output_file=None, branchsel=None):
         """Initialize output writer and define collections."""
         if output_file is None:
             # Auto-generate output filename: input_base_processed.root
             base = os.path.splitext(input_file)[0]
             output_file = f"{base}_processed.root"
 
-        self.output = PODIOOutputWriter(input_file, output_file)
+        self.output = PODIOOutputWriter(input_file, output_file, branchsel=branchsel)
         self.output_file = output_file
 
         # Define collections with kinematic variables
@@ -164,8 +164,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Select good electrons via gen-matching and write output ROOT file."
     )
-    parser.add_argument("--input",  default=None, help="Path to PODIO ROOT file")
-    parser.add_argument("--nevts",  type=int, default=None, help="Max events to process")
+    parser.add_argument("--input",     default=None, help="Path to PODIO ROOT file")
+    parser.add_argument("--nevts",     type=int, default=None, help="Max events to process")
+    parser.add_argument("--branchsel", default=None,
+                        help="Path to keep/drop text file for output branches "
+                             "(e.g. podio_keep_and_drop.txt). "
+                             "When omitted all original branches are preserved.")
     args = parser.parse_args()
 
     infile = args.input
@@ -179,4 +183,5 @@ if __name__ == "__main__":
         modules=[GoodElectronAnalysis()],
         maxEntries=args.nevts,
         progressEvery=100,
+        branchsel=args.branchsel,
     ).run()

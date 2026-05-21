@@ -41,8 +41,14 @@ class PODIOModule:
         """Called once after all events are processed."""
         pass
 
-    def beginFile(self, filename):
-        """Called before each input file is processed."""
+    def beginFile(self, filename, branchsel=None):
+        """Called before each input file is processed.
+
+        branchsel : str or PODIOBranchSelection or None
+            Path to a keep/drop text file forwarded from PODIOPostProcessor.
+            Pass it to PODIOOutputWriter(..., branchsel=branchsel) to filter
+            which original branches appear in the output.
+        """
         pass
 
     def endFile(self, filename):

@@ -1,20 +1,20 @@
 """
 Output writer for PODIO-processed ROOT files.
 
-Creates a standalone ROOT output file with a fresh 'events' TTree.
-Does not depend on input tree structure — only writes the branches
-explicitly defined by the analysis module.
+Clones the input 'events' tree (preserving all original branches) and adds
+new user-defined collection branches on top.  Optionally filters which
+original branches are cloned via a keep/drop text file (same format as the
+original NanoAODTools BranchSelection).
 
 Usage
 -----
     # In your PODIOModule.beginFile():
-    self.output = PODIOOutputWriter(input_file, output_file)
+    self.output = PODIOOutputWriter(input_file, output_file,
+                                    branchsel="podio_keep_and_drop.txt")
     self.output.define_collection("gElectron", ["pt", "eta", "phi", "E", "px", "py", "pz", "mass"])
-    self.output.define_collection("ggenElectron", ["pt", "eta", "phi", "E", "px", "py", "pz", "mass", "genIdx"])
 
     # In your PODIOModule.analyze():
-    self.output.fill_collection("gElectron",    {"pt": [...], "eta": [...], ...})
-    self.output.fill_collection("ggenElectron", {"pt": [...], ..., "genIdx": [...]})
+    self.output.fill_collection("gElectron", {"pt": [...], "eta": [...], ...})
     self.output.fill_event()
 
     # In your PODIOModule.endFile():
@@ -22,64 +22,103 @@ Usage
 
 Branch naming convention
 ------------------------
-    n<Name>         — int, number of entries in this collection for this event
-    <Name>_<var>    — float array[n<Name>], or int array for variables ending in 'Idx'/'Id'/'PDG'
+    n<Name>         — int, number of entries for this event
+    <Name>_<var>    — float array[n<Name>], or int array for vars ending in 'Idx'/'Id'/'PDG'
+
+Keep/drop file format (branchsel)
+----------------------------------
+    drop *                          # drop everything first
+    keep MCParticles*               # keep MCParticles + all sub-leaves
+    keep _MCParticles*              # keep internal PODIO relation branches
+    keep ReconstructedChargedParticles*
+    keep _ReconstructedChargedParticleAssociations*
+
+    Lines starting with # and blank lines are ignored.
+    Patterns use ROOT SetBranchStatus wildcard (* = anything).
+    See podio_keep_and_drop.txt for a working example.
 """
 import ROOT
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 from array import array
 
+from PhysicsTools.NanoAODTools.postprocessing.framework.podio_branchselection import PODIOBranchSelection
+
 
 class PODIOOutputWriter:
     """
-    Writes user-defined collections to a new ROOT file.
+    Writes a new ROOT file that contains selected original input branches plus
+    new user-defined collection branches.
 
     Parameters
     ----------
-    input_file  : str — path to the input PODIO file (used only for naming; not read here)
+    input_file  : str — path to the input PODIO ROOT file (cloned as-is)
     output_file : str — path to the output ROOT file to create
+    entry_start : int — first entry being processed (must match PODIOPostProcessor.firstEntry)
+    branchsel   : str or PODIOBranchSelection or None
+                  Path to a keep/drop text file (or a pre-built PODIOBranchSelection
+                  object).  When provided, the branch selection is applied to the
+                  input tree *before* CloneTree(0) so only the selected original
+                  branches appear in the output.  New user-defined collections
+                  (define_collection) are always written regardless of branchsel.
+                  When None (default) all original branches are preserved.
     """
 
-    def __init__(self, input_file, output_file):
-        self._output_path = output_file
+    def __init__(self, input_file, output_file, entry_start=0, branchsel=None):
         ROOT.gROOT.SetBatch(True)
+
+        # Open input to clone its tree structure
+        self._infile = ROOT.TFile.Open(input_file, "READ")
+        if not self._infile or self._infile.IsZombie():
+            raise IOError("Cannot open input file: {}".format(input_file))
+        self._intree = self._infile.Get("events")
+        if not self._intree:
+            raise IOError("Tree 'events' not found in {}".format(input_file))
+
+        # Apply keep/drop branch selection on the input tree before CloneTree.
+        # CloneTree(0) only clones branches whose status is 1, so disabling
+        # branches here controls which original branches appear in the output.
+        if branchsel is not None:
+            if isinstance(branchsel, str):
+                branchsel = PODIOBranchSelection(branchsel)
+            branchsel.selectBranches(self._intree)
+            print("  Branch selection applied ({} rules).".format(len(branchsel._ops)))
+
+        # Output file — clone the input tree structure with 0 entries.
+        # CloneTree(0) shares branch memory buffers with _intree, so
+        # calling _intree.GetEntry(i) automatically populates _outtree's
+        # input branches ready for Fill().
         self._outfile = ROOT.TFile.Open(output_file, "RECREATE")
         if not self._outfile or self._outfile.IsZombie():
             raise IOError("Cannot create output file: {}".format(output_file))
         self._outfile.cd()
-        self._outtree = ROOT.TTree("events", "Processed PODIO events")
+        self._outtree = self._intree.CloneTree(0)
 
-        self._collections = {}    # {coll_name: [var, ...]}
-        self._count_bufs  = {}    # {count_branch_name: array('i', [0])}
-        self._data_bufs   = {}    # {branch_name: array}
-        self._is_int      = {}    # {branch_name: bool}
+        self._entry       = int(entry_start)  # tracks which input entry to load next
+        self._collections = {}   # {coll_name: [var, ...]}
+        self._count_bufs  = {}   # {count_branch: array('i',[0])}
+        self._data_bufs   = {}   # {branch_name: array}
+        self._is_int      = {}   # {branch_name: bool}
+        self._output_path = output_file
 
     # ------------------------------------------------------------------
 
     def define_collection(self, name, variables):
         """
-        Declare a new collection of objects.
+        Declare a new output collection.
 
-        Variables whose name ends with 'Idx', 'Id', or equals 'PDG' are stored as int;
-        all others are stored as float.
-
-        Parameters
-        ----------
-        name      : str        e.g. "gElectron"
-        variables : list[str]  e.g. ["pt", "eta", "phi", "E", "px", "py", "pz", "mass"]
+        Variables whose name ends with 'Idx', 'Id', or equals 'PDG' are stored
+        as int; all others as float.
         """
         self._collections[name] = list(variables)
         count_name = "n{}".format(name)
 
-        # count branch (scalar int)
         self._count_bufs[count_name] = array('i', [0])
         self._outtree.Branch(count_name,
                              self._count_bufs[count_name],
                              "{}/I".format(count_name))
 
-        # per-variable array branches
         for var in variables:
-            bname = "{}_{}".format(name, var)
+            bname   = "{}_{}".format(name, var)
             use_int = var.endswith("Idx") or var.endswith("Id") or var == "PDG"
             self._is_int[bname] = use_int
             if use_int:
@@ -94,20 +133,13 @@ class PODIOOutputWriter:
         print("  Defined collection '{}': {}".format(name, ", ".join(variables)))
 
     def fill_collection(self, name, data):
-        """
-        Fill all branches for collection 'name' with this event's data.
-
-        Parameters
-        ----------
-        name : str
-        data : dict[str, list]   e.g. {"pt": [1.2, 3.4], "eta": [-0.5, 1.1], ...}
-        """
+        """Fill all branches for collection 'name' with this event's data."""
         if name not in self._collections:
             raise ValueError(
                 "Collection '{}' not defined. Call define_collection first.".format(name)
             )
-        vars_  = self._collections[name]
-        n      = len(data[vars_[0]]) if vars_ and vars_[0] in data else 0
+        vars_      = self._collections[name]
+        n          = len(data[vars_[0]]) if vars_ and vars_[0] in data else 0
         count_name = "n{}".format(name)
         self._count_bufs[count_name][0] = n
 
@@ -116,7 +148,6 @@ class PODIOOutputWriter:
             values = data.get(var, [])
             buf    = self._data_bufs[bname]
 
-            # Grow the C-array buffer if this event is larger than pre-allocated
             if n > len(buf):
                 new_size = n * 2
                 if self._is_int[bname]:
@@ -130,12 +161,15 @@ class PODIOOutputWriter:
                 buf[j] = int(v) if self._is_int[bname] else float(v)
 
     def fill_event(self):
-        """Commit the current event to the output tree."""
+        """Load the current input entry (preserving all original branches) and fill."""
+        self._intree.GetEntry(self._entry)
+        self._entry += 1
         self._outtree.Fill()
 
     def write(self):
-        """Write the output TTree and close the file."""
+        """Write the output tree and close both files."""
         self._outfile.cd()
         self._outtree.Write("", ROOT.TObject.kOverwrite)
         self._outfile.Close()
+        self._infile.Close()
         print("  Output written to {}".format(self._output_path))

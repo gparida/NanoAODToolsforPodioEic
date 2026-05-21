@@ -1,0 +1,39 @@
+# PODIO branch keep/drop example
+#
+# Syntax (same as NanoAODTools BranchSelection):
+#   keep  <pattern>      enable branches matching ROOT wildcard pattern
+#   drop  <pattern>      disable branches matching ROOT wildcard pattern
+#   keepmatch <regex>    enable top-level branch names matching Python regex
+#   dropmatch <regex>    disable top-level branch names matching Python regex
+#
+# PODIO naming convention in ROOT
+# --------------------------------
+# Each PODIO collection is a top-level TBranch named after the collection,
+# e.g.  MCParticles.  Sub-leaves use dot notation:
+#   MCParticles.PDG,  MCParticles.momentum.x, ...
+# Internal PODIO relation branches start with _:
+#   _MCParticles_parents,  _ReconstructedChargedParticleAssociations_rec, ...
+#
+# To select an entire collection (data + relations), use a trailing *:
+#   keep MCParticles*
+#   keep _MCParticles*
+#
+# The rules below keep only the collections needed for the GoodElectronAnalysis.
+# Edit to match your own analysis.
+#
+# Applied to the input tree BEFORE CloneTree(0), so only kept branches
+# appear in the output file.
+
+drop *
+
+# Generator-level particles
+keep MCParticles*
+keep _MCParticles*
+
+# Charged reconstructed particles
+keep ReconstructedChargedParticles*
+keep _ReconstructedChargedParticles*
+
+# Reco–gen associations for charged particles
+keep ReconstructedChargedParticleAssociations*
+keep _ReconstructedChargedParticleAssociations*
