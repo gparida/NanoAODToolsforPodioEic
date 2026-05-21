@@ -2,7 +2,7 @@
 """
 PODIO example: select good electrons and store with gen matching.
 
-Selects reconstructed electrons passing pt > 200 MeV, |eta| < 4.6
+Selects reconstructed electrons passing |eta| < 4.6
 and stores their kinematics plus matched gen electron kinematics.
 
 Output file: input_base_name_processed.root with branches:
@@ -102,7 +102,7 @@ class GoodElectronAnalysis(PODIOModule):
                     continue
                 gen_pdg = int(mc[mc_idx]["PDG"])
                 if abs(gen_pdg) == 11:          # electron (11) or positron (-11)
-                    if p.pt() > 0.2 and abs(p.eta()) < 4.6:
+                    if abs(p.eta()) < 4.6:
                         good_electrons.append((i, mc_idx))
 
         g_ele_data = {
