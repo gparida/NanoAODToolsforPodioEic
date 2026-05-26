@@ -27,16 +27,15 @@ class MakeHistograms(object):
         self.userWeight = userWeight
 
     def CreateCutString(self, standardCutString, otherCuts, weighting):
-        if standardCutString != None:
-            cutString = weighting + '*(' + '(' + standardCutString + ')' + ' && '
-            if otherCuts != None:
-                for cut in otherCuts:
-                    cutString += '(' + cut + ')' + ' && '
-        else:
-            cutString = weighting + ' && '
-        cutString = cutString[:len(cutString) - 3]
-        cutString += ')'
-        return cutString
+        cuts = []
+        if standardCutString:
+            cuts.append(standardCutString)
+        if otherCuts:
+            cuts.extend(otherCuts)
+        if cuts:
+            cut_expr = ' && '.join('(' + c + ')' for c in cuts)
+            return weighting + '*(' + cut_expr + ')'
+        return weighting
 
     def StandardDraw(self, theFile, variable, standardCutString, additionalSelections,
                      histogramName, theWeight='1'):
