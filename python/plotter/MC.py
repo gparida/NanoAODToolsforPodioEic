@@ -111,6 +111,8 @@ def main():
                         help='Event weight expression (default: 1)')
     parser.add_argument('--lumi', default='ePIC Simulation, 10#times110 GeV',
                         help='Label printed at top right of canvas')
+    parser.add_argument('--normalize', help='normalize all histograms to unit area',
+                        action='store_true')
     args = parser.parse_args()
 
     ROOT.gStyle.SetOptStat(0)
@@ -184,6 +186,14 @@ def main():
         for name, h in Signal_Histos:
             print("Signal {:30s}: {:.1f}".format(name, h.Integral(0, h.GetNbinsX() + 1)))
 
+        # --- Normalize to unit area ---
+        if args.normalize:
+            if QEDCompton_Histo is not None and QEDCompton_Histo.Integral() > 0:
+                QEDCompton_Histo.Scale(1.0 / QEDCompton_Histo.Integral())
+            for name, h in Signal_Histos:
+                if h.Integral() > 0:
+                    h.Scale(1.0 / h.Integral())
+
         # --- Skip if nothing to draw ---
         if QEDCompton_Histo is None and not Signal_Histos:
             print("WARNING: nothing to draw for", variable)
@@ -253,7 +263,7 @@ def main():
         for _, h in Signal_Histos:
             h.Draw('SAME HIST')
 
-        backgroundStack.GetYaxis().SetTitle("Events")
+        backgroundStack.GetYaxis().SetTitle("A.U." if args.normalize else "Events")
         backgroundStack.GetYaxis().SetTitleSize(0.04)
         backgroundStack.GetYaxis().SetLabelSize(0.03)
         backgroundStack.GetYaxis().SetTitleOffset(1.05)
