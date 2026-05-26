@@ -20,11 +20,12 @@ class PODIOEvent:
         n = event.nReconstructedParticles
     """
 
-    def __init__(self, tree, collections, local_idx):
+    def __init__(self, tree, collections, local_idx, leaf_cache=None):
         self._tree        = tree
         self._collections = collections   # {coll_name: [member, ...]}
         self._idx         = local_idx
         self._coll_cache  = {}
+        self._leaf_cache  = leaf_cache or {}
 
     def get(self, collection_name):
         """Return a PODIOCollection for this event."""
@@ -32,7 +33,8 @@ class PODIOEvent:
             if collection_name not in self._collections:
                 raise KeyError("Collection '{}' not found in file.".format(collection_name))
             self._coll_cache[collection_name] = PODIOCollection(
-                self._tree, collection_name, self._collections[collection_name]
+                self._tree, collection_name, self._collections[collection_name],
+                self._leaf_cache
             )
         return self._coll_cache[collection_name]
 
@@ -62,11 +64,12 @@ class PODIOCollection:
             print(particle.energy)
     """
 
-    def __init__(self, tree, coll_name, members):
-        self._tree    = tree
-        self._name    = coll_name
-        self._members = members   # list of member names
-        self._data    = None      # {member: [float, ...]} — filled on first access
+    def __init__(self, tree, coll_name, members, leaf_cache=None):
+        self._tree       = tree
+        self._name       = coll_name
+        self._members    = members     # list of member names
+        self._data       = None        # {member: [float, ...]} — filled on first access
+        self._leaf_cache = leaf_cache or {}
 
     def _load(self):
         """Read all member arrays for this collection from the currently loaded TTree entry."""
@@ -75,7 +78,7 @@ class PODIOCollection:
         self._data = {}
         for member in self._members:
             leaf_name = "{}.{}".format(self._name, member)
-            leaf = self._tree.GetLeaf(leaf_name)
+            leaf = self._leaf_cache.get(leaf_name) or self._tree.GetLeaf(leaf_name)
             if leaf is not None:
                 n = leaf.GetLen()
                 self._data[member] = [leaf.GetValue(j) for j in range(n)]

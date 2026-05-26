@@ -80,7 +80,8 @@ class PODIOPostProcessor:
             print(f"  Collections available: {len(reader.collection_names)}")
 
             for m in self.modules:
-                m.beginFile(fname, branchsel=self.branchsel)
+                m.beginFile(fname, branchsel=self.branchsel,
+                            intree=reader._tree)
 
             n_proc, n_acc, elapsed = podio_event_loop(
                 self.modules,

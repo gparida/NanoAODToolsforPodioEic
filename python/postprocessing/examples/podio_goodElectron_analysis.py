@@ -60,14 +60,14 @@ class GoodElectronAnalysis(PODIOModule):
         print(f"  Total good electrons selected: {self.n_good_electrons}")
         print(f"  Gen-matched electrons: {self.n_gen_matched}")
 
-    def beginFile(self, input_file, output_file=None, branchsel=None):
+    def beginFile(self, input_file, output_file=None, branchsel=None, intree=None):
         """Initialize output writer and define collections."""
         if output_file is None:
-            # Auto-generate output filename: input_base_processed.root
             base = os.path.splitext(input_file)[0]
             output_file = f"{base}_processed.root"
 
-        self.output = PODIOOutputWriter(input_file, output_file, branchsel=branchsel)
+        self.output = PODIOOutputWriter(input_file, output_file,
+                                        branchsel=branchsel, intree=intree)
         self.output_file = output_file
 
         # Define collections with kinematic variables

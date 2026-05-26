@@ -41,13 +41,14 @@ class PODIOModule:
         """Called once after all events are processed."""
         pass
 
-    def beginFile(self, filename, branchsel=None):
+    def beginFile(self, filename, branchsel=None, intree=None):
         """Called before each input file is processed.
 
         branchsel : str or PODIOBranchSelection or None
             Path to a keep/drop text file forwarded from PODIOPostProcessor.
-            Pass it to PODIOOutputWriter(..., branchsel=branchsel) to filter
-            which original branches appear in the output.
+        intree : ROOT.TTree or None
+            The reader's already-open TTree.  Pass to PODIOOutputWriter as
+            ``intree=intree`` to skip the redundant second GetEntry per event.
         """
         pass
 
@@ -113,10 +114,11 @@ def podio_event_loop(
         if progress_every and n_processed % progress_every == 0:
             t1 = time.time()
             rate = progress_every / max(t1 - t_last, 1e-9)
+            rate_str = f"{rate/1000:.2f} kHz" if rate >= 1000 else f"{rate:.1f} Hz"
             out.write(
                 f"  Processed {n_processed:8d}/{n_entries} events  "
                 f"({100.*n_processed/n_entries:.1f}%)  "
-                f"rate={rate/1000:.1f} kHz  "
+                f"rate={rate_str}  "
                 f"accepted={n_accepted}\n"
             )
             out.flush()
@@ -124,8 +126,9 @@ def podio_event_loop(
 
     elapsed = time.time() - t0
     avg_rate = n_processed / max(elapsed, 1e-9)
+    avg_rate_str = f"{avg_rate/1000:.2f} kHz" if avg_rate >= 1000 else f"{avg_rate:.1f} Hz"
     out.write(
         f"Done. Processed {n_processed} events in {elapsed:.1f}s "
-        f"({avg_rate/1000:.2f} kHz). Accepted {n_accepted}/{n_processed}.\n"
+        f"({avg_rate_str}). Accepted {n_accepted}/{n_processed}.\n"
     )
     return n_processed, n_accepted, elapsed

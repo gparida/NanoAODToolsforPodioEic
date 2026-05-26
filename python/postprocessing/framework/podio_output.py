@@ -63,21 +63,31 @@ class PODIOOutputWriter:
                   When None (default) all original branches are preserved.
     """
 
-    def __init__(self, input_file, output_file, entry_start=0, branchsel=None):
+    def __init__(self, input_file, output_file, entry_start=0, branchsel=None,
+                 intree=None):
         ROOT.gROOT.SetBatch(True)
 
-        # Open input to clone its tree structure
-        self._infile = ROOT.TFile.Open(input_file, "READ")
-        if not self._infile or self._infile.IsZombie():
-            raise IOError("Cannot open input file: {}".format(input_file))
-        self._intree = self._infile.Get("events")
-        if not self._intree:
-            raise IOError("Tree 'events' not found in {}".format(input_file))
+        if intree is not None:
+            # Fast path: reuse the already-open reader tree.
+            # The reader calls GetEntry(i) before analyze(); Fill() can use those
+            # buffers directly — no second GetEntry needed per event.
+            self._infile      = None
+            self._intree      = intree
+            self._owns_infile = False
+        else:
+            # Standalone path: open our own file handle.
+            self._infile = ROOT.TFile.Open(input_file, "READ")
+            if not self._infile or self._infile.IsZombie():
+                raise IOError("Cannot open input file: {}".format(input_file))
+            self._intree = self._infile.Get("events")
+            if not self._intree:
+                raise IOError("Tree 'events' not found in {}".format(input_file))
+            self._owns_infile = True
 
         # Apply keep/drop branch selection on the input tree before CloneTree.
-        # CloneTree(0) only clones branches whose status is 1, so disabling
-        # branches here controls which original branches appear in the output.
-        if branchsel is not None:
+        # Only applied in standalone mode — applying it to the shared reader tree
+        # would prevent the analysis from reading the dropped collections.
+        if branchsel is not None and self._owns_infile:
             if isinstance(branchsel, str):
                 branchsel = PODIOBranchSelection(branchsel)
             branchsel.selectBranches(self._intree)
@@ -161,15 +171,22 @@ class PODIOOutputWriter:
                 buf[j] = int(v) if self._is_int[bname] else float(v)
 
     def fill_event(self):
-        """Load the current input entry (preserving all original branches) and fill."""
-        self._intree.GetEntry(self._entry)
+        """Fill the output tree for the current event.
+
+        In standalone mode: loads original branches from our own file handle.
+        In fast mode (shared reader tree): the reader already called GetEntry,
+        so we just Fill() directly from the shared buffers.
+        """
+        if self._owns_infile:
+            self._intree.GetEntry(self._entry)
         self._entry += 1
         self._outtree.Fill()
 
     def write(self):
-        """Write the output tree and close both files."""
+        """Write the output tree and close the output file."""
         self._outfile.cd()
         self._outtree.Write("", ROOT.TObject.kOverwrite)
         self._outfile.Close()
-        self._infile.Close()
+        if self._owns_infile:
+            self._infile.Close()
         print("  Output written to {}".format(self._output_path))

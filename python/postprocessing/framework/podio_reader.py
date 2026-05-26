@@ -37,12 +37,14 @@ class PODIOReader:
             self._total_entries,
         )
 
-        # Build collection map: {coll_name: [member, ...]}
-        # PODIO leaves are named "CollectionName.member" or "CollectionName.sub.member".
-        # tree.GetListOfLeaves() returns all leaves flattened across all sub-branches.
+        # Build collection map and leaf cache in one pass.
+        # _leaf_cache avoids repeated TTree::GetLeaf searches (linear over 700+ branches)
+        # by pre-mapping leaf_name → TLeaf* at startup.
         self._collections = {}
+        self._leaf_cache  = {}
         for leaf in self._tree.GetListOfLeaves():
             lname = leaf.GetName()
+            self._leaf_cache[lname] = leaf
             if "." in lname:
                 dot    = lname.index(".")
                 coll   = lname[:dot]
@@ -73,11 +75,13 @@ class PODIOReader:
     def __iter__(self):
         for local_idx in range(len(self)):
             self._tree.GetEntry(self._entry_start + local_idx)
-            yield PODIOEvent(self._tree, self._collections, local_idx)
+            yield PODIOEvent(self._tree, self._collections, local_idx,
+                             self._leaf_cache)
 
     def get_event(self, local_idx):
         self._tree.GetEntry(self._entry_start + local_idx)
-        return PODIOEvent(self._tree, self._collections, local_idx)
+        return PODIOEvent(self._tree, self._collections, local_idx,
+                          self._leaf_cache)
 
     def close(self):
         self._tfile.Close()
