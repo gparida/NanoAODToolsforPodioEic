@@ -13,6 +13,9 @@ variableAxisTitleDictionary = {
     "ggenElectron_eta[0]":  "Gen-Matched Electron #eta",
     "ggenElectron_phi[0]":  "Gen-Matched Electron #phi",
     "ggenElectron_E[0]":    "Gen-Matched Electron Energy (GeV)",
+    "MET_pt[0]":            "Missing p_{T} (GeV)",
+    "MET_phi[0]":           "Missing p_{T} #phi",
+    "MET_pz[0]":            "Missing p_{z} (GeV)",
 }
 
 variableFileNameDictionary = {
@@ -30,6 +33,9 @@ variableFileNameDictionary = {
     "ggenElectron_eta[0]":  "genmatched_electron_eta",
     "ggenElectron_phi[0]":  "genmatched_electron_phi",
     "ggenElectron_E[0]":    "genmatched_electron_E",
+    "MET_pt[0]":            "met_pt",
+    "MET_phi[0]":           "met_phi",
+    "MET_pz[0]":            "met_pz",
 }
 
 variableSettingDictionary = {
@@ -47,4 +53,7 @@ variableSettingDictionary = {
     "ggenElectron_eta[0]":  "46,-4.6,4.6",
     "ggenElectron_phi[0]":  "32,-3.2,3.2",
     "ggenElectron_E[0]":    "50,0,50",
+    "MET_pt[0]":            "50,0,25",
+    "MET_phi[0]":           "32,-3.2,3.2",
+    "MET_pz[0]":            "60,-60,60",
 }
