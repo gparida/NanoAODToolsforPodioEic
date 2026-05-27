@@ -54,30 +54,33 @@ def run_one(input_file, output_file, nevts, branchsel, dry_run):
     if branchsel is not None:
         cmd += ["--branchsel", branchsel]
 
-    print(f"[{basename}] → {output_file}")
+    print(f"[{basename}] Starting → {output_file}", flush=True)
 
     if dry_run:
         print("  [dry-run] " + " ".join(cmd))
         return basename, "ok", "dry-run"
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Stream stdout+stderr line by line, prefixing each line with [basename]
+    # so progress rates from all parallel jobs are visible in real time.
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    last_line = ""
+    for line in proc.stdout:
+        line = line.rstrip()
+        if line:
+            print(f"[{basename}] {line}", flush=True)
+            last_line = line
+    proc.wait()
 
-    # Print the job's output as one block so parallel jobs don't interleave
-    header = f"\n{'='*60}\n[{basename}] output\n{'='*60}"
-    if result.stdout.strip():
-        print(header)
-        print(result.stdout.rstrip())
-    if result.stderr.strip():
-        print(f"\n[{basename}] stderr:")
-        print(result.stderr.rstrip())
-
-    if result.returncode == 0:
+    if proc.returncode == 0:
         size_mb = os.path.getsize(output_file) / 1e6 if os.path.exists(output_file) else 0.0
         return basename, "ok", f"{size_mb:.1f} MB written"
     else:
-        last_err = (result.stderr.strip().splitlines()[-1]
-                    if result.stderr.strip() else "unknown error")
-        return basename, "fail", last_err
+        return basename, "fail", last_line or f"exit code {proc.returncode}"
 
 
 def main():
