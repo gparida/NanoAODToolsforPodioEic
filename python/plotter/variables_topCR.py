@@ -40,8 +40,8 @@ variableFileNameDictionary = {
 
 variableSettingDictionary = {
     "ngElectron":           "5,0,5",
-    "gElectron_pt[0]":      "50,0,25",
-    "gElectron_eta[0]":     "46,-4.6,4.6",
+    "gElectron_pt[0]":      "100,0,2.5",
+    "gElectron_eta[0]":     "92,-4.6,0",
     "gElectron_phi[0]":     "32,-3.2,3.2",
     "gElectron_E[0]":       "50,0,50",
     "gElectron_mass[0]":    "20,0.0,0.002",
@@ -49,11 +49,11 @@ variableSettingDictionary = {
     "gElectron_py[0]":      "50,-25,25",
     "gElectron_pz[0]":      "60,-60,60",
     "nggenElectron":        "5,0,5",
-    "ggenElectron_pt[0]":   "50,0,25",
-    "ggenElectron_eta[0]":  "46,-4.6,4.6",
+    "ggenElectron_pt[0]":   "100,0,25",
+    "ggenElectron_eta[0]":  "92,-4.6,0",
     "ggenElectron_phi[0]":  "32,-3.2,3.2",
     "ggenElectron_E[0]":    "50,0,50",
-    "MET_pt[0]":            "50,0,25",
+    "MET_pt[0]":            "100,0,5",
     "MET_phi[0]":           "32,-3.2,3.2",
     "MET_pz[0]":            "60,-60,60",
 }

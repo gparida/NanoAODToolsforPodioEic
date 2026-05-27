@@ -93,7 +93,7 @@ def main():
     parser.add_argument('--variables', nargs='+',
                         default=["gElectron_pt[0]", "gElectron_eta[0]", "gElectron_phi[0]",
                                  "gElectron_E[0]", "ngElectron",
-                                 "ggenElectron_pt[0]", "ggenElectron_eta[0]"],
+                                 "ggenElectron_pt[0]", "ggenElectron_eta[0]","MET_pt[0]","MET_phi[0]", "MET_pz[0]"],
                         help='Variables to draw control plots for')
     parser.add_argument('--additionalSelections', '-C2', nargs='+',
                         default=["ngElectron>0"],
