@@ -71,6 +71,7 @@ def podio_event_loop(
     max_events=None,
     progress_every=1000,
     out=sys.stdout,
+    preselection=None,
 ):
     """
     Run a list of PODIOModule instances over events in a PODIOReader.
@@ -82,23 +83,48 @@ def podio_event_loop(
     max_events   : int or None — stop after this many events
     progress_every : int — print progress every N events (0 to disable)
     out          : file-like object for progress output
+    preselection : str or None — ROOT TTreeFormula cut string applied before
+                   running modules (equivalent to NanoAODTools PostProcessor
+                   ``cut`` parameter).  Events failing the cut are skipped
+                   entirely and not counted in n_processed.
 
     Returns
     -------
     (n_processed, n_accepted, elapsed_seconds)
     """
+    # Build TTreeFormula if preselection cut is requested.
+    # ROOT is imported lazily so the event loop stays usable without it.
+    formula = None
+    if preselection:
+        import ROOT
+        formula = ROOT.TTreeFormula("podio_presel", preselection, reader._tree)
+        if formula.GetNdim() == 0:
+            raise ValueError(
+                "Preselection formula could not be compiled: {!r}\n"
+                "Check that all branch names exist in the input tree.".format(preselection)
+            )
+        out.write("  Preselection: {}\n".format(preselection))
+        out.flush()
+
     n_entries = len(reader)
     if max_events is not None:
         n_entries = min(n_entries, max_events)
 
-    n_processed = 0
-    n_accepted  = 0
+    n_processed  = 0
+    n_accepted   = 0
+    n_presel_cut = 0
     t0 = time.time()
     t_last = t0
 
     for i, event in enumerate(reader):
         if i >= n_entries:
             break
+
+        # Preselection evaluated on the current tree buffer (filled by GetEntry
+        # inside PODIOReader.__iter__ before yielding).
+        if formula is not None and formula.EvalInstance() == 0:
+            n_presel_cut += 1
+            continue
 
         accepted = True
         for m in modules:
@@ -127,8 +153,10 @@ def podio_event_loop(
     elapsed = time.time() - t0
     avg_rate = n_processed / max(elapsed, 1e-9)
     avg_rate_str = f"{avg_rate/1000:.2f} kHz" if avg_rate >= 1000 else f"{avg_rate:.1f} Hz"
+    presel_msg = f"  ({n_presel_cut} cut by preselection)\n" if n_presel_cut else ""
     out.write(
         f"Done. Processed {n_processed} events in {elapsed:.1f}s "
         f"({avg_rate_str}). Accepted {n_accepted}/{n_processed}.\n"
+        + presel_msg
     )
     return n_processed, n_accepted, elapsed

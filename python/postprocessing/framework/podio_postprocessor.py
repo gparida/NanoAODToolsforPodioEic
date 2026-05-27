@@ -36,6 +36,11 @@ class PODIOPostProcessor:
     branchsel   : str or None — path to a keep/drop text file (same format as
                   NanoAODTools BranchSelection).  Forwarded to each module's
                   beginFile() so it can be passed to PODIOOutputWriter.
+    preselection : str or None — ROOT TTreeFormula cut string applied before
+                  running any module's analyze().  Equivalent to the ``cut``
+                  parameter in NanoAODTools PostProcessor.  Events failing the
+                  cut are skipped entirely and not written to the output.
+                  Example: ``"ngElectron > 0"``
     """
 
     def __init__(
@@ -46,13 +51,15 @@ class PODIOPostProcessor:
         firstEntry=0,
         progressEvery=1000,
         branchsel=None,
+        preselection=None,
     ):
         self.inputFiles    = inputFiles
         self.modules       = modules or []
         self.maxEntries    = maxEntries
         self.firstEntry    = firstEntry
         self.progressEvery = progressEvery
-        self.branchsel     = branchsel   # keep/drop file path forwarded to beginFile
+        self.branchsel     = branchsel     # keep/drop file path forwarded to beginFile
+        self.preselection  = preselection  # TTreeFormula cut applied before modules
 
     def run(self):
         t0 = time.time()
@@ -88,6 +95,7 @@ class PODIOPostProcessor:
                 reader,
                 max_events=self.maxEntries,
                 progress_every=self.progressEvery,
+                preselection=self.preselection,
             )
 
             for m in self.modules:

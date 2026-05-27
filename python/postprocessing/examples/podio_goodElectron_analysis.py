@@ -47,8 +47,9 @@ from PhysicsTools.NanoAODTools.postprocessing.framework.podio_output import PODI
 class GoodElectronAnalysis(PODIOModule):
     """Select good electrons and store with gen matching."""
 
-    def __init__(self):
+    def __init__(self, output_file=None):
         self.output = None
+        self._output_file_override = output_file
         self.n_good_electrons = 0
         self.n_gen_matched = 0
 
@@ -62,7 +63,9 @@ class GoodElectronAnalysis(PODIOModule):
 
     def beginFile(self, input_file, output_file=None, branchsel=None, intree=None):
         """Initialize output writer and define collections."""
-        if output_file is None:
+        if self._output_file_override is not None:
+            output_file = self._output_file_override
+        elif output_file is None:
             base = os.path.splitext(input_file)[0]
             output_file = f"{base}_processed.root"
 
@@ -74,6 +77,8 @@ class GoodElectronAnalysis(PODIOModule):
         variables = ["pt", "eta", "phi", "E", "px", "py", "pz", "mass"]
         self.output.define_collection("gElectron", variables)
         self.output.define_collection("ggenElectron", variables + ["genIdx"])
+        # MET stored as a single-entry collection (nMET=1 per event)
+        self.output.define_collection("MET", ["pt", "phi", "eta", "pz"])
 
     def endFile(self, input_file, output_file=None):
         """Write and close output file."""
@@ -150,8 +155,30 @@ class GoodElectronAnalysis(PODIOModule):
             g_gen_ele_data["genIdx"].append(mc_idx)
             self.n_gen_matched += 1
 
+        # MET = negative vector sum of charged tracks only (pending verification of neutral collections)
+        sum_px = sum_py = sum_pz = 0.0
+        for p in charged:
+            sum_px += p["momentum.x"]
+            sum_py += p["momentum.y"]
+            sum_pz += p["momentum.z"]
+
+        met_px  = -sum_px
+        met_py  = -sum_py
+        met_pz  = -sum_pz
+        met_pt  = math.sqrt(met_px**2 + met_py**2)
+        met_p   = math.sqrt(met_px**2 + met_py**2 + met_pz**2)
+        met_phi = math.atan2(met_py, met_px)
+        met_eta = (0.5 * math.log((met_p + met_pz) / (met_p - met_pz))
+                   if met_p > abs(met_pz) else math.copysign(float("inf"), met_pz))
+
         self.output.fill_collection("gElectron",    g_ele_data)
         self.output.fill_collection("ggenElectron", g_gen_ele_data)
+        self.output.fill_collection("MET", {
+            "pt":  [met_pt],
+            "phi": [met_phi],
+            "eta": [met_eta],
+            "pz":  [met_pz],
+        })
         self.output.fill_event()
         self.n_good_electrons += len(good_electrons)
 
@@ -165,11 +192,16 @@ if __name__ == "__main__":
         description="Select good electrons via gen-matching and write output ROOT file."
     )
     parser.add_argument("--input",     default=None, help="Path to PODIO ROOT file")
+    parser.add_argument("--output",    default=None, help="Path for output ROOT file")
     parser.add_argument("--nevts",     type=int, default=None, help="Max events to process")
     parser.add_argument("--branchsel", default=None,
                         help="Path to keep/drop text file for output branches "
                              "(e.g. podio_keep_and_drop.txt). "
                              "When omitted all original branches are preserved.")
+    parser.add_argument("--preselection", default=None,
+                        help="ROOT TTreeFormula cut applied before running the analysis. "
+                             "Events failing the cut are skipped entirely. "
+                             "Example: \"ngElectron>0\"")
     args = parser.parse_args()
 
     infile = args.input
@@ -180,8 +212,9 @@ if __name__ == "__main__":
 
     PODIOPostProcessor(
         inputFiles=[infile],
-        modules=[GoodElectronAnalysis()],
+        modules=[GoodElectronAnalysis(output_file=args.output)],
         maxEntries=args.nevts,
         progressEvery=100,
         branchsel=args.branchsel,
+        preselection=args.preselection,
     ).run()
