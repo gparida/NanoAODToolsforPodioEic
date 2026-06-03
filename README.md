@@ -257,10 +257,63 @@ def analyze(self, event):
 
 ---
 
+## ALP BDT Analysis
+
+`ALPBDT/` contains a complete TMVA Boosted Decision Tree framework for
+discriminating **ALP (axion-like particle) → γγ signal** against
+**QED Compton background** at the EIC.
+
+### Quick start
+
+```bash
+# 1. Produce flat ROOT ntuples from all PODIO signal + background files
+python3 ALPBDT/produce_ntuples.py --all
+
+# 2. Train a BDT for one ALP mass hypothesis
+python3 ALPBDT/bdt_train.py --signal ma_1.0
+
+# 3. Diagnostic plots: input distributions, correlations, ROC, variable importance
+python3 ALPBDT/bdt_diagnostics.py --signal ma_1.0
+```
+
+### Supported signal samples
+
+ALP masses: 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0 GeV.
+Background: QED Compton (`qed_compton_hadd.root`).
+
+### BDT input features (32 total)
+
+DIS kinematics (x, Q², y) · scattered-electron kinematics ·
+photon multiplicity · leading/sub-leading photon kinematics ·
+di-photon system (m_gg, ΔR, Δφ, pT) · event shape (HT, MET, ΣE) ·
+electron–photon angular correlations (ΔR, 3-body mass).
+
+### ALPBDT directory layout
+
+```
+ALPBDT/
+├── config.py              # all paths, cuts, feature list, BDT hyperparameters
+├── alp_flat_ntuple.py     # PODIOModule → flat ROOT TTree (one row per event)
+├── produce_ntuples.py     # driver: ntuple production for all samples
+├── bdt_train.py           # TMVA Factory / DataLoader BDT training
+├── bdt_diagnostics.py     # matplotlib: distributions, correlations, ROC, importance
+├── README.md              # full setup and usage documentation
+├── ntuples/               # produced flat ntuples (git-ignored)
+├── weights/               # TMVA XML weight files + ROOT output (git-ignored)
+└── plots/                 # diagnostic figures (git-ignored)
+```
+
+See **[ALPBDT/README.md](ALPBDT/README.md)** for the full documentation:
+configuration reference, step-by-step workflow, feature descriptions,
+BDT hyperparameter tuning guide, and troubleshooting.
+
+---
+
 ## Repository layout
 
 ```
 NanoAODToolsforPodioEic/
+├── ALPBDT/                          # ALP BDT analysis (see ALPBDT/README.md)
 ├── python/postprocessing/
 │   ├── framework/
 │   │   ├── podio_reader.py          # opens ROOT file, iterates events (PyROOT)

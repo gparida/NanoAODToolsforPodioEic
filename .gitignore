@@ -8,3 +8,8 @@ build
 *.d
 *.so
 *.pcm
+
+# ALPBDT generated outputs (large files — not tracked)
+ALPBDT/ntuples/
+ALPBDT/weights/
+ALPBDT/plots/
